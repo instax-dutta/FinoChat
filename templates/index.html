@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinoChat</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --background-dark: #1e1e2e;
+            --foreground-dark: #2b2b3b;
+            --text-dark: #e0e0e0;
+            --accent-dark: #00ffc6;
+
+            --background-light: #f8f9fa;
+            --foreground-light: #ffffff;
+            --text-light: #2b2b3b;
+            --accent-light: #007bff;
+        }
+
+        [data-theme="dark"] {
+            --background: var(--background-dark);
+            --foreground: var(--foreground-dark);
+            --text: var(--text-dark);
+            --accent: var(--accent-dark);
+        }
+
+        [data-theme="light"] {
+            --background: var(--background-light);
+            --foreground: var(--foreground-light);
+            --text: var(--text-light);
+            --accent: var(--accent-light);
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            background-color: var(--background);
+            color: var(--text);
+            transition: background-color 0.3s, color 0.3s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .container {
+            background: var(--foreground);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+            width: 90%;
+            max-width: 600px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin: 0;
+        }
+
+        #themeToggle {
+            background: var(--accent);
+            color: var(--foreground);
+            border: none;
+            border-radius: 15px;
+            padding: 5px 15px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+
+        .chat-window {
+            height: 300px;
+            overflow-y: auto;
+            background: var(--background);
+            border-radius: 10px;
+            padding: 10px;
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 10px;
+        }
+
+        .chat-window div {
+            margin-bottom: 10px;
+            border-radius: 8px;
+            padding: 8px 12px;
+            display: inline-block;
+            max-width: 70%;
+        }
+
+        .chat-window .user {
+            background: var(--accent);
+            color: var(--foreground);
+            align-self: flex-end;
+        }
+
+        .chat-window .other {
+            background: var(--foreground);
+            color: var(--text);
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        input {
+            padding: 10px;
+            border: 1px solid var(--foreground);
+            border-radius: 10px;
+            flex-grow: 1;
+        }
+
+        button {
+            background: var(--accent);
+            color: var(--foreground);
+            border: none;
+            border-radius: 10px;
+            padding: 10px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: var(--text);
+        }
+
+        .username-set {
+            display: flex;
+            margin-bottom: 10px;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>FinoChat</h1>
+            <button id="themeToggle">Switch Theme</button>
+        </div>
+        <div class="username-set">
+            <input id="username" type="text" placeholder="Enter your username">
+            <button id="setUsername">Set Username</button>
+        </div>
+        <div id="messages" class="chat-window"></div>
+        <div class="controls">
+            <input id="messageInput" type="text" placeholder="Type your message...">
+            <button id="sendMessage">Send</button>
+        </div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        const messages = document.getElementById('messages');
+        const usernameInput = document.getElementById('username');
+        const messageInput = document.getElementById('messageInput');
+        const themeToggle = document.getElementById('themeToggle');
+
+        let username = '';
+
+        // Set username
+        document.getElementById('setUsername').onclick = () => {
+            const enteredUsername = usernameInput.value.trim();
+            if (enteredUsername) {
+                username = enteredUsername;
+                socket.emit('set_username', { username });
+                usernameInput.disabled = true;
+                alert(`Username set to ${username}`);
+            } else {
+                alert('Please enter a username.');
+            }
+        };
+
+        // Send message when the Send button is clicked
+        document.getElementById('sendMessage').onclick = sendMessage;
+
+        // Send message when the Enter key is pressed
+        messageInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // Send message function
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (message) {
+                socket.emit('message', { username, message });
+                messageInput.value = '';
+            }
+        }
+
+        // Receive messages
+        socket.on('message', (data) => {
+            const messageElement = document.createElement('div');
+            messageElement.textContent = `${data.username}: ${data.message}`;
+            messages.appendChild(messageElement);
+            messages.scrollTop = messages.scrollHeight;
+        });
+
+        // User connected
+        socket.on('user_connected', (data) => {
+            const messageElement = document.createElement('div');
+            messageElement.textContent = `${data.username} joined the chat.`;
+            messages.appendChild(messageElement);
+        });
+
+        // User disconnected
+        socket.on('user_disconnected', (data) => {
+            const messageElement = document.createElement('div');
+            messageElement.textContent = `${data.username} left the chat.`;
+            messages.appendChild(messageElement);
+        });
+
+        // Theme toggle
+        let darkMode = true;
+        themeToggle.onclick = () => {
+            darkMode = !darkMode;
+            document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+        };
+
+        // Set default theme
+        document.documentElement.setAttribute('data-theme', 'dark');
+    </script>
+</body>
+</html>

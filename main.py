@@ -1,44 +1,37 @@
 from flask import Flask, render_template, request
-from flask_socketio import SocketIO, emit
-from Crypto.Cipher import AES
-import os
-from stem.control import Controller
+from flask_socketio import SocketIO, send, emit
+import eventlet
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.urandom(16)
-socketio = SocketIO(app)
+app.config['SECRET_KEY'] = 'your_secret_key'
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-# In-memory storage for simplicity
-active_users = {}
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-# Encryption setup
-def encrypt_message(key, message):
-    cipher = AES.new(key, AES.MODE_EAX)
-    nonce = cipher.nonce
-    ciphertext, tag = cipher.encrypt_and_digest(message.encode())
-    return nonce + ciphertext
+# Dictionary to store connected users
+connected_users = {}
 
-def decrypt_message(key, encrypted):
-    nonce = encrypted[:16]
-    ciphertext = encrypted[16:]
-    cipher = AES.new(key, AES.MODE_EAX, nonce=nonce)
-    return cipher.decrypt(ciphertext).decode()
+@socketio.on('connect')
+def handle_connect():
+    print('A user connected.')
 
-@app.route("/")
-def home():
-    return render_template("index.html")
+@socketio.on('set_username')
+def set_username(data):
+    connected_users[request.sid] = data['username']
+    emit('user_connected', {'username': data['username']}, broadcast=True)
 
 @socketio.on('message')
 def handle_message(data):
-    key = active_users.get(request.sid)  # User's encryption key
-    encrypted_message = encrypt_message(key, data['message'])
-    emit('message', {'message': encrypted_message}, broadcast=True)
+    username = connected_users.get(request.sid, 'Anonymous')
+    message_data = {'username': username, 'message': data}
+    emit('message', message_data, broadcast=True)
 
-@socketio.on('auth')
-def handle_auth(data):
-    key = os.urandom(16)  # Generate a unique encryption key per session
-    active_users[request.sid] = key
-    emit('auth_success', {'key': key.hex()})
+@socketio.on('disconnect')
+def handle_disconnect():
+    username = connected_users.pop(request.sid, 'Anonymous')
+    emit('user_disconnected', {'username': username}, broadcast=True)
 
-if __name__ == "__main__":
-    app.run(port=5000)
+if __name__ == '__main__':
+    socketio.run(app ,port=3000, debug=True)
